@@ -6,12 +6,14 @@ import discord, sqlite3, os, asyncio, random, datetime, json
 
 DATABASE_PATH = os.path.join('.','data','project.db')
 TIP_PATH = os.path.join('.','data','tips.json')
+TOKEN_PATH = os.path.join('.','data','token.txt')
 PROJECT_MASTER = 'ProjectMaster'
 FHBT_IMAGE = "https://media.discordapp.net/attachments/1175423530054201364/1177105955545153636/face-holding-back-tears.png?ex=65714c59&is=655ed759&hm=ca7484f164beebf32a17f252fd430b5c1df05731899379ecff0fe92bfcb2f738&=&format=webp&width=360&height=360"
 whatAreYouDoing = {
     "프로젝트 생성" : set()
 }
-token = 'MTE3NTQyMTIzODY5NzUyNTI5MA.G_Bz-K.VZOy0aA8X2u6LadPwlwqxncZ0UwzcEQt6lhs8E'
+with open(TOKEN_PATH, 'r', encoding = "UTF-8") as file:
+    token = file.read()
 bot = commands.Bot(command_prefix='ㅅ', intents=discord.Intents.all())
 bot.remove_command('help')
 
