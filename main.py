@@ -294,12 +294,18 @@ async def 작성(ctx, *arg):
         FROM {PROJECT_MASTER}
         WHERE projectId = "{ctx.guild.id}_{projectName}";
     ''').fetchall()
+    con.commit()
+    con.close()
     if search:
+        con = sqlite3.connect(DATABASE_PATH)
+        cur = con.cursor()
         search = cur.execute(f'''
             SELECT *
             FROM "{ctx.guild.id}_{projectName}"
             WHERE userId = "{ctx.author.id}";
         ''').fetchall()
+        con.commit()
+        con.close()
         if not search:
             embed = discord.Embed(title = f"? 해당 프로젝트에 가입이 안되어 있는데요?", description = f"``ㅅ가입 {projectName}``으로 프로젝트에 가입하는 게 좋다고 생각해요..", color = discord.Color.red())
             await ctx.send(embed = embed)
@@ -316,16 +322,19 @@ async def 작성(ctx, *arg):
             return
         response = response.content
         today = datetime.date.today().isoformat().replace(*"-_")
+        response = response.replace('"', '""')
+        con = sqlite3.connect(DATABASE_PATH)
+        cur = con.cursor()
         search = cur.execute(f'''
             UPDATE "{ctx.guild.id}_{projectName}"
             SET D{today} = "{response}"
             WHERE userId = "{ctx.author.id}";
         ''').fetchall()
+        con.commit()
+        con.close()
         embed = discord.Embed(title = "저장이 완료되었다..", description = "그렇게 생각하시면 될 것 같아요..", color = discord.Color.green())
         embed.set_thumbnail(url = FHBT_IMAGE)
         await ctx.send(embed = embed)
-        con.commit()
-        con.close()
     else:
         embed = discord.Embed(title = f"'{projectName}'프로젝트같은 건 없는 것 같아요..", description = "철자를 다시 확인해보거나 새로 만들어보세요...", color = 0xff0000)
         await ctx.send(embed = embed)
@@ -333,15 +342,44 @@ async def 작성(ctx, *arg):
 @bot.command(name = "조회")
 async def 조회(ctx, *arg):
     if not arg: return
+    projectName = ' '.join(arg)
     guild = ctx.guild
     con = sqlite3.connect(DATABASE_PATH)
     cur = con.cursor()
     search = cur.execute(f'''
         SELECT *
-        FROM {PROJECT_MASTER};
+        FROM {PROJECT_MASTER}
+        WHERE projectId = "{guild.id}_{projectName}";
     ''').fetchall()
     con.commit()
     con.close()
+    if search is None:
+        embed = discord.Embed(title = "그런 프로젝트는 없어요..", description = "그.. 프로젝트 이름을 정확히 입력해주세요..", color = discord.Color.red())
+        embed.set_thumbnail(url = FHBT_IMAGE)
+        await ctx.send(embed = embed)
+        return
+    con = sqlite3.connect(DATABASE_PATH)
+    cur = con.cursor()
+    search = cur.execute(f'''
+        SELECT *
+        FROM "{guild.id}_{projectName}"
+        WHERE userId = {ctx.author.id};
+    ''').fetchall()[0]
+    con.commit()
+    con.close()
+    if search is None:
+        embed = discord.Embed(title = "해당 프로젝트에 가입되어 있지 않아요..", description = "프로젝트에 가입해주세요..", color = discord.Color.red())
+        embed.set_thumbnail(url = FHBT_IMAGE)
+        await ctx.send(embed = embed)
+    con = sqlite3.connect(DATABASE_PATH)
+    cur = con.cursor()
+    columnName = tuple(map(lambda x : x[1], cur.execute(f'''
+        pragma table_info("{guild.id}_{projectName}");
+    ''').fetchall()))
+    con.commit()
+    con.close()
+    embed = discord.Embed(title = columnName[1], description = '`(정보 없음)`' if search[1] is None else search[1], color = 0xffbf00)
+    await ctx.send(embed = embed)
 
 @bot.command(name = "프로젝트")
 async def 프로젝트(ctx, *arg):
@@ -472,7 +510,7 @@ async def 프로젝트(ctx, *arg):
                 return
             try:
                 role = await guild.create_role(name = projectName, colour = discord.Colour(color))
-                cur.execute(f'''CREATE TABLE "{guild.id}_{projectName}" (userId int, D{datetime.date.today().isoformat().replace(*"-_")} TEXT)''')
+                cur.execute(f'''CREATE TABLE "{guild.id}_{projectName}" (userId int, D{datetime.date.today().isoformat().replace(*"-_")} mediumtext)''')
                 cur.execute(f'''INSERT INTO {PROJECT_MASTER} (projectId, projectColor, notionChannel, roleId) VALUES ("{guild.id}_{projectName}", {color}, "{select.values[0]}", {role.id})''')
                 con.commit()
                 con.close()
@@ -487,7 +525,7 @@ async def 프로젝트(ctx, *arg):
                 async def ok_callback(interaction: Interaction):
                     if interaction.user.id == ctx.author.id:
                         embed = discord.Embed(title = "계속할게요..", description = "사실 그리 막 중요하진 않다고 생각해요..", color = discord.Color.red())     
-                        cur.execute(f'''CREATE TABLE "{guild.id}_{projectName}" (userId int, D{datetime.date.today().isoformat().replace(*"-_")} TEXT)''')
+                        cur.execute(f'''CREATE TABLE "{guild.id}_{projectName}" (userId int, D{datetime.date.today().isoformat().replace(*"-_")} mediumtext	)''')
                         cur.execute(f'''INSERT INTO {PROJECT_MASTER} (projectId, projectColor, notionChannel, roleId) VALUES ("{guild.id}_{projectName}", {color}, "{select.values[0]}", -1)''')
                         con.commit()
                         con.close()
@@ -532,6 +570,25 @@ async def 프로젝트(ctx, *arg):
         embed = discord.Embed(title = "⚠️ 진심으로 제거하실건가요..? ⚠️", description = "돌이킬 수 없는 선택이긴 해요..", color = discord.Color.red())
         await ctx.send(embed = embed, view = DeleteProject(ctx, guild, projectName))
         
+@tasks.loop(seconds = 1)
+async def alertEveryday():
+    if datetime.datetime.now().second  == -1:
+        if role := discord.utils.get(bot.get_guild(1148512256246693888).roles, name = "프로젝트 참여자"):
+            testChannel = bot.get_guild(1148512256246693888).get_channel(1175423530054201364)
+            con = sqlite3.connect(DATABASE_PATH)
+            cur = con.cursor()
+            #search = cur.execute(f'''
+            #    SELECT userId
+            #    FROM 1148512256246693888_{' '.join(arg)};
+            #''').fetchall()
+            #ping = '\n'.join(map(lambda x : f'- <@{x[0]}>', search))
+            embed = discord.Embed(title = "짤리고 싶지 않으시다면", description = f"실적을 이쯤에서 보고하는 게 좋을 것 같아요...\n{'ping'}")
+            embed.set_thumbnail(url = FHBT_IMAGE)
+            await testChannel.send(content = f"||{role.mention}||",embed = embed)
+            con.commit()
+            con.close()
+bot.run(token)
+
 @tasks.loop(seconds = 1)
 async def alertEveryday():
     if datetime.datetime.now().second  == -1:
