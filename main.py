@@ -8,6 +8,10 @@ DATABASE_PATH = os.path.join('.','data','project.db')
 TIP_PATH = os.path.join('.','data','tips.json')
 TOKEN_PATH = os.path.join('.','data','token.txt')
 PROJECT_MASTER = 'ProjectMaster'
+PROJECT_ID = 0
+PROJECT_COLOR = 1
+NOTION_CHANNEL = 2
+ROLE_ID = 3
 FHBT_IMAGE = "https://media.discordapp.net/attachments/1175423530054201364/1177105955545153636/face-holding-back-tears.png?ex=65714c59&is=655ed759&hm=ca7484f164beebf32a17f252fd430b5c1df05731899379ecff0fe92bfcb2f738&=&format=webp&width=360&height=360"
 whatAreYouDoing = {
     "프로젝트 생성" : set()
@@ -30,6 +34,7 @@ with open(TIP_PATH, 'r', encoding = "UTF-8") as file:
     tipList = json.loads(file.read())
 
 def randomColor(): return random.randint(0, 255) * 256 * 256 + random.randint(0, 255) * 256 + random.randint(0, 255)
+def todayStamp(): return 'D'+datetime.date.today().isoformat().replace(*"-_")
 
 CHANNEL_EMOJI = {
     discord.ChannelType.text : "#️⃣",
@@ -321,13 +326,12 @@ async def 작성(ctx, *arg):
             await ctx.send(embed = timeOut)
             return
         response = response.content
-        today = datetime.date.today().isoformat().replace(*"-_")
         response = response.replace('"', '""')
         con = sqlite3.connect(DATABASE_PATH)
         cur = con.cursor()
         search = cur.execute(f'''
             UPDATE "{ctx.guild.id}_{projectName}"
-            SET D{today} = "{response}"
+            SET {todayStamp()} = "{response}"
             WHERE userId = "{ctx.author.id}";
         ''').fetchall()
         con.commit()
@@ -569,29 +573,59 @@ async def 프로젝트(ctx, *arg):
         projectName = projectName.content
         embed = discord.Embed(title = "⚠️ 진심으로 제거하실건가요..? ⚠️", description = "돌이킬 수 없는 선택이긴 해요..", color = discord.Color.red())
         await ctx.send(embed = embed, view = DeleteProject(ctx, guild, projectName))
-        
-@tasks.loop(seconds = 1)
-async def alertEveryday():
-    if datetime.datetime.now().second  == -1:
-        if role := discord.utils.get(bot.get_guild(1148512256246693888).roles, name = "프로젝트 참여자"):
-            testChannel = bot.get_guild(1148512256246693888).get_channel(1175423530054201364)
-            con = sqlite3.connect(DATABASE_PATH)
-            cur = con.cursor()
-            #search = cur.execute(f'''
-            #    SELECT userId
-            #    FROM 1148512256246693888_{' '.join(arg)};
-            #''').fetchall()
-            #ping = '\n'.join(map(lambda x : f'- <@{x[0]}>', search))
-            embed = discord.Embed(title = "짤리고 싶지 않으시다면", description = f"실적을 이쯤에서 보고하는 게 좋을 것 같아요...\n{'ping'}")
-            embed.set_thumbnail(url = FHBT_IMAGE)
-            await testChannel.send(content = f"||{role.mention}||",embed = embed)
-            con.commit()
-            con.close()
-bot.run(token)
 
 @tasks.loop(seconds = 1)
 async def alertEveryday():
-    if datetime.datetime.now().second  == -1:
+    now = datetime.datetime.now()
+    hour = now.hour
+    minute = now.minute
+    second = now.second
+    tester = second % 3 == 0
+    if second + minute + hour == 0:
+        yesterday = now - datetime.timedelta(days = 1)
+        yesterdayStamp = f"D{yesterday.year}_{yesterday.month}_{yesterday.day}"
+        con = sqlite3.connect(DATABASE_PATH)
+        cur = con.cursor()
+        search = tuple(map(lambda x : x[0],cur.execute(f'''
+            SELECT projectId
+            FROM "{PROJECT_MASTER}";
+        ''').fetchall()))
+        for projectId in search:
+            reportYesterday = False
+            history = tuple(map(lambda x : x[1], cur.execute(f'''
+                pragma table_info("{projectId}");
+            ''').fetchall()))
+            if yesterdayStamp in history:
+                reportYesterday = True
+            cur.execute(f'''
+                ALTER TABLE "{projectId}"
+                ADD "{todayStamp()}" TEXT;
+            ''')
+            projectInfo = cur.execute(f'''
+                SELECT *
+                FROM "{PROJECT_MASTER}"
+                WHERE projectId = "{projectId}";
+            ''').fetchall()[0]
+            guildId, projectName = projectId.split('_')
+            guildId = int(guildId)
+            guild = bot.get_guild(guildId)
+            role = discord.utils.get(guild.roles, id = int(projectInfo[ROLE_ID]))
+            testChannel = guild.get_channel(int(projectInfo[NOTION_CHANNEL]))
+            projectColor = int(projectInfo[PROJECT_COLOR])
+            if reportYesterday:
+                embed = discord.Embed(title = "0시가 되었어요...", description = f"{projectName}팀의 활기찬 하루군요..!\n어제의 보고를 시작하겠어요..", color = projectColor)
+                embed.set_thumbnail(url = FHBT_IMAGE)
+                await testChannel.send(embed = embed)
+                embed = discord.Embed(title = "어제 리뷰를 작성해주신 분들이에요..!", color = projectColor)
+                await testChannel.send(content = f"||{role.mention}||", embed = embed)
+            else:
+                embed = discord.Embed(title = "0시가 되었어요...", description = f"바로 내일의 일을 할 때이죠...\n프로젝트를 힘차게 시작해보죠..!", color = projectColor)
+                embed.set_thumbnail(url = FHBT_IMAGE)
+                await testChannel.send(embed = embed)
+        con.commit()
+        con.close()
+        
+    if second  == -1:
         if role := discord.utils.get(bot.get_guild(1148512256246693888).roles, name = "프로젝트 참여자"):
             testChannel = bot.get_guild(1148512256246693888).get_channel(1175423530054201364)
             con = sqlite3.connect(DATABASE_PATH)

@@ -1,0 +1,1 @@
+{"name":"Local: d","url":"c:\\Users\\moomin\\Desktop\\NewPython\\StreakBot\\d.py","tests":[{"id":1703252079984,"input":"2","output":"1\n2 1"},{"id":1703252084146,"input":"10","output":"3\n10 9 3 1"}],"interactive":false,"memoryLimit":1024,"timeLimit":3000,"srcPath":"c:\\Users\\moomin\\Desktop\\NewPython\\StreakBot\\d.py","group":"local","local":true}
